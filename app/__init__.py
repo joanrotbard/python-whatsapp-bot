@@ -89,12 +89,15 @@ def create_app(config_class=None) -> Flask:
             pass
         
         _logger.info("Flask application initialized successfully")
+        _logger.info(f"Application ready - registered blueprints: {[bp.name for bp in app.blueprints.values()]}")
         
     except Exception as e:
         _logger.critical(f"Failed to create Flask application: {e}", exc_info=True)
         # Re-raise to prevent silent failures
         raise
     
+    # Log that app is ready
+    _logger.info("=== Flask app factory completed successfully ===")
     return app
 
 
