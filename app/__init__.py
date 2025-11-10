@@ -24,48 +24,72 @@ def create_app(config_class=None) -> Flask:
     Returns:
         Configured Flask application
     """
-    app = Flask(__name__)
-    
-    # Load configuration
-    config = config_class or get_config()
-    app.config.from_object(config)
-    
-    # Also load environment variables directly to app.config for backward compatibility
-    # This ensures variables like APP_SECRET are available via current_app.config
-    import os
-    from dotenv import load_dotenv
-    load_dotenv()
-    app.config["APP_SECRET"] = os.getenv("APP_SECRET")
-    app.config["APP_ID"] = os.getenv("APP_ID")
-    
-    config.validate()
-    
-    # Configure logging
-    _configure_logging()
-    
-    # Initialize infrastructure
-    _initialize_infrastructure(app)
-    
-    # Initialize middleware
-    _initialize_middleware(app)
-    
-    # Initialize services and store in app context
-    with app.app_context():
-        _initialize_services(app)
-    
-    # Register blueprints
-    app.register_blueprint(webhook_blueprint)
-    app.register_blueprint(health_blueprint)
-    
-    # Register teardown handlers
-    @app.teardown_appcontext
-    def close_redis(error):
-        """Close Redis connections on app teardown."""
-        # Redis connection pool handles cleanup automatically
-        pass
-    
     _logger = logging.getLogger(__name__)
-    _logger.info("Flask application initialized successfully")
+    
+    try:
+        app = Flask(__name__)
+        
+        # Load configuration
+        config = config_class or get_config()
+        app.config.from_object(config)
+        
+        # Also load environment variables directly to app.config for backward compatibility
+        # This ensures variables like APP_SECRET are available via current_app.config
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        app.config["APP_SECRET"] = os.getenv("APP_SECRET")
+        app.config["APP_ID"] = os.getenv("APP_ID")
+        
+        # Validate configuration (but don't fail if optional things are missing)
+        try:
+            config.validate()
+        except ValueError as e:
+            _logger.warning(f"Configuration validation warning: {e}")
+            # Continue anyway - some vars might be optional in certain environments
+        
+        # Configure logging
+        _configure_logging()
+        
+        # Initialize infrastructure (Redis - optional, won't fail if unavailable)
+        try:
+            _initialize_infrastructure(app)
+        except Exception as e:
+            _logger.warning(f"Infrastructure initialization warning: {e}")
+            # Continue - app can work without Redis
+        
+        # Initialize middleware
+        try:
+            _initialize_middleware(app)
+        except Exception as e:
+            _logger.error(f"Middleware initialization failed: {e}", exc_info=True)
+            # Some middleware might fail, but continue
+        
+        # Initialize services and store in app context
+        try:
+            with app.app_context():
+                _initialize_services(app)
+        except Exception as e:
+            _logger.error(f"Service initialization failed: {e}", exc_info=True)
+            # Try to continue - app might still work
+        
+        # Register blueprints
+        app.register_blueprint(webhook_blueprint)
+        app.register_blueprint(health_blueprint)
+        
+        # Register teardown handlers
+        @app.teardown_appcontext
+        def close_redis(error):
+            """Close Redis connections on app teardown."""
+            # Redis connection pool handles cleanup automatically
+            pass
+        
+        _logger.info("Flask application initialized successfully")
+        
+    except Exception as e:
+        _logger.critical(f"Failed to create Flask application: {e}", exc_info=True)
+        # Re-raise to prevent silent failures
+        raise
     
     return app
 

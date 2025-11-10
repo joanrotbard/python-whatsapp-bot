@@ -31,9 +31,9 @@ USER appuser
 # Expose port (Railway will use PORT env var if set)
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+# Health check (use PORT env var if available, otherwise 8000)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import os, requests; port = os.getenv('PORT', '8000'); requests.get(f'http://localhost:{port}/health', timeout=5)" || exit 1
 
 # Run with Gunicorn
 CMD ["gunicorn", "-c", "gunicorn_config.py", "app:create_app()"]
