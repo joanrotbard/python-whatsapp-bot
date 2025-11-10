@@ -103,10 +103,19 @@ def create_app(config_class=None) -> Flask:
 
 def _configure_logging() -> None:
     """Configure application logging."""
+    import sys
+    
+    # Configure logging to send everything to stdout (Railway marks stderr as errors)
     logging.basicConfig(
         level=logging.INFO if not Config.DEBUG else logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stdout,  # Explicitly send to stdout
+        force=True  # Override any existing configuration
     )
+    
+    # Also redirect stderr to stdout for any libraries that write to stderr
+    # This prevents Railway from marking normal logs as errors
+    sys.stderr = sys.stdout
 
 
 def _initialize_infrastructure(app: Flask) -> None:

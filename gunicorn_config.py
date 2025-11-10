@@ -27,18 +27,24 @@ else:
 
 worker_class = "sync"
 worker_connections = 1000
-timeout = 30
+timeout = 120  # Increased for Railway - some requests may take longer
 keepalive = 5
+graceful_timeout = 30  # Time to wait for workers to finish before killing them
 
 # Logging
+# Send all logs to stdout so Railway doesn't mark them as errors
 accesslog = "-"  # stdout
-errorlog = "-"  # stderr
+errorlog = "-"  # stdout (changed from stderr so Railway doesn't mark as errors)
 loglevel = "info"
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
 
 # Enable capture output to see all logs
 capture_output = True
 enable_stdio_inheritance = True
+
+# Redirect stderr to stdout to prevent Railway from marking logs as errors
+import sys
+sys.stderr = sys.stdout
 
 # Process naming
 proc_name = "whatsapp-bot"
