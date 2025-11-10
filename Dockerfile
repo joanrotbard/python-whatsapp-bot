@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock requirements-production.txt ./
 RUN pip install uv && uv pip install --system -r requirements-production.txt
 
 # Production stage
