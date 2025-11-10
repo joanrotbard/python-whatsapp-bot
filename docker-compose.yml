@@ -6,30 +6,89 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/whatsapp_bot
+      # WhatsApp API Configuration
+      - ACCESS_TOKEN=${ACCESS_TOKEN}
+      - PHONE_NUMBER_ID=${PHONE_NUMBER_ID}
+      - VERSION=${VERSION:-v18.0}
+      - VERIFY_TOKEN=${VERIFY_TOKEN}
+      - APP_SECRET=${APP_SECRET}
+      - APP_ID=${APP_ID}
+      
+      # OpenAI Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_ASSISTANT_ID=${OPENAI_ASSISTANT_ID}
+      
+      # Redis Configuration
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_THREAD_TTL=${REDIS_THREAD_TTL:-3600}
+      
+      # Celery Configuration
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      
+      # Rate Limiting
+      - RATELIMIT_STORAGE_URL=redis://redis:6379/2
+      - RATELIMIT_ENABLED=${RATELIMIT_ENABLED:-true}
+      
+      # Monitoring
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - ENABLE_METRICS=${ENABLE_METRICS:-true}
+      
+      # Application
+      - DEBUG=${DEBUG:-false}
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
     depends_on:
-      - postgres
       - redis
     restart: unless-stopped
-    deploy:
-      replicas: 3  # 3 instancias para escalabilidad
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  postgres:
-    image: postgres:16-alpine
+  celery:
+    build: .
+    command: celery -A app.infrastructure.celery_app:celery_app worker --loglevel=info --concurrency=4
     environment:
-      POSTGRES_DB: whatsapp_bot
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # WhatsApp API Configuration
+      - ACCESS_TOKEN=${ACCESS_TOKEN}
+      - PHONE_NUMBER_ID=${PHONE_NUMBER_ID}
+      - VERSION=${VERSION:-v18.0}
+      - APP_SECRET=${APP_SECRET}
+      - APP_ID=${APP_ID}
+      
+      # OpenAI Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_ASSISTANT_ID=${OPENAI_ASSISTANT_ID}
+      
+      # Redis Configuration
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_THREAD_TTL=${REDIS_THREAD_TTL:-3600}
+      
+      # Celery Configuration
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      
+      # Application
+      - FLASK_ENV=${FLASK_ENV:-production}
+    depends_on:
+      - redis
+      - app
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   nginx:
     image: nginx:alpine
@@ -43,6 +102,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
   redis_data:
 
