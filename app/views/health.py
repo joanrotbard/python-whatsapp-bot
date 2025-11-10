@@ -16,10 +16,20 @@ def health_check():
     Returns:
         JSON response with health status
     """
-    return jsonify({
-        "status": "healthy",
-        "service": "whatsapp-bot"
-    }), 200
+    _logger.info("Health check endpoint called")
+    try:
+        response = jsonify({
+            "status": "healthy",
+            "service": "whatsapp-bot"
+        })
+        _logger.info("Health check response sent successfully")
+        return response, 200
+    except Exception as e:
+        _logger.error(f"Error in health check: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 @health_blueprint.route("/health/ready", methods=["GET"])

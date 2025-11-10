@@ -1,6 +1,6 @@
 """Flask application factory with dependency injection and scalability features."""
 import logging
-from flask import Flask
+from flask import Flask, jsonify
 
 from app.config.settings import Config, get_config
 from app.infrastructure.redis_client import RedisClientFactory
@@ -81,6 +81,17 @@ def create_app(config_class=None) -> Flask:
         app.register_blueprint(webhook_blueprint)
         app.register_blueprint(health_blueprint)
         
+        # Add a simple test route to verify the app is working
+        @app.route("/", methods=["GET"])
+        def root():
+            """Root endpoint for testing."""
+            _logger.info("Root endpoint called")
+            return jsonify({
+                "status": "ok",
+                "service": "whatsapp-bot",
+                "message": "Service is running"
+            }), 200
+        
         # Register teardown handlers
         @app.teardown_appcontext
         def close_redis(error):
@@ -90,6 +101,7 @@ def create_app(config_class=None) -> Flask:
         
         _logger.info("Flask application initialized successfully")
         _logger.info(f"Application ready - registered blueprints: {[bp.name for bp in app.blueprints.values()]}")
+        _logger.info(f"App routes registered: {[str(rule) for rule in app.url_map.iter_rules()]}")
         
     except Exception as e:
         _logger.critical(f"Failed to create Flask application: {e}", exc_info=True)
