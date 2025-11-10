@@ -68,6 +68,7 @@ class RedisClientFactory:
             Redis client instance or None if connection fails
         """
         if cls._client is None:
+            redis_url = None
             try:
                 redis_url = url or Config.REDIS_URL
                 
@@ -82,7 +83,10 @@ class RedisClientFactory:
                     logging.warning(f"Got: {redis_url[:50]}...")
                     return None
                 
-                logging.info(f"Connecting to Redis...")
+                # Log masked URL for debugging
+                masked_url = cls._mask_url(redis_url)
+                logging.info(f"Connecting to Redis: {masked_url}")
+                
                 pool = cls.create_pool(redis_url)
                 cls._client = redis.Redis(connection_pool=pool)
                 
@@ -105,9 +109,27 @@ class RedisClientFactory:
                 logging.error(f"Redis authentication failed: {e}")
                 logging.error("Check that your REDIS_URL includes username and password if required")
                 logging.error("Format: redis://username:password@host:port/db")
+                if redis_url:
+                    logging.error(f"Current URL (masked): {cls._mask_url(redis_url)}")
                 cls._client = None
             except redis.ConnectionError as e:
+                error_msg = str(e)
                 logging.warning(f"Failed to connect to Redis: {e}")
+                
+                # Provide helpful error messages
+                if "Connection reset by peer" in error_msg or "104" in error_msg:
+                    logging.error("⚠️  Connection reset - This usually means:")
+                    logging.error("   1. Redis URL is missing username/password")
+                    logging.error("   2. URL format is incorrect")
+                    logging.error("   3. Redis requires authentication but URL doesn't include it")
+                    logging.error("")
+                    logging.error("   Expected format: redis://username:password@host:port/db")
+                    if redis_url:
+                        logging.error(f"   Current URL (masked): {cls._mask_url(redis_url)}")
+                    logging.error("")
+                    logging.error("   For Railway, make sure REDIS_URL includes:")
+                    logging.error("   redis://default:YOUR_PASSWORD@maglev.proxy.rlwy.net:37124/0")
+                
                 logging.warning("Application will continue without Redis (threads won't persist)")
                 cls._client = None
             except Exception as e:
