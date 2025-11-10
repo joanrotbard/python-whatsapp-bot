@@ -28,7 +28,7 @@ COPY . .
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
+# Expose port (Railway will use PORT env var if set)
 EXPOSE 8000
 
 # Health check

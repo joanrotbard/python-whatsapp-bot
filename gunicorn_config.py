@@ -1,12 +1,30 @@
 """Gunicorn configuration for production."""
 import multiprocessing
+import os
 
 # Server socket
-bind = "0.0.0.0:8000"
+# Use PORT environment variable if available (for Railway, Heroku, etc.), otherwise default to 8000
+port = os.getenv("PORT", "8000")
+bind = f"0.0.0.0:{port}"
 backlog = 2048
 
 # Worker processes
-workers = multiprocessing.cpu_count() * 2 + 1
+# Use environment variable if set, otherwise use a reasonable default
+# For Railway/cloud: 2-4 workers is usually enough since heavy processing is in Celery
+# For local/server: can use more workers based on CPU count
+workers_env = os.getenv("GUNICORN_WORKERS")
+if workers_env:
+    workers = int(workers_env)
+else:
+    # Default: 2-4 workers for cloud platforms, more for dedicated servers
+    cpu_count = multiprocessing.cpu_count()
+    if cpu_count <= 2:
+        workers = 2  # Minimum 2 workers
+    elif cpu_count <= 4:
+        workers = 4  # Good for most cloud platforms
+    else:
+        workers = min(cpu_count, 8)  # Cap at 8 for dedicated servers
+
 worker_class = "sync"
 worker_connections = 1000
 timeout = 30
