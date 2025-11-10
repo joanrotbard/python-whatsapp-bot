@@ -41,6 +41,27 @@ def create_app(config_class=None) -> Flask:
         app.config["APP_SECRET"] = os.getenv("APP_SECRET")
         app.config["APP_ID"] = os.getenv("APP_ID")
         
+        # Configure logging FIRST (needed for all subsequent operations)
+        _configure_logging()
+        
+        # Register blueprints IMMEDIATELY so routes are available right away
+        # This allows Railway's health checks to pass even during initialization
+        app.register_blueprint(webhook_blueprint)
+        app.register_blueprint(health_blueprint)
+        
+        # Add a simple test route to verify the app is working
+        @app.route("/", methods=["GET"])
+        def root():
+            """Root endpoint for testing."""
+            _logger.info("Root endpoint called")
+            return jsonify({
+                "status": "ok",
+                "service": "whatsapp-bot",
+                "message": "Service is running"
+            }), 200
+        
+        _logger.info("Routes registered - app can now respond to requests")
+        
         # Validate configuration (but don't fail if optional things are missing)
         try:
             config.validate()
@@ -48,10 +69,8 @@ def create_app(config_class=None) -> Flask:
             _logger.warning(f"Configuration validation warning: {e}")
             # Continue anyway - some vars might be optional in certain environments
         
-        # Configure logging
-        _configure_logging()
-        
         # Initialize infrastructure (Redis - optional, won't fail if unavailable)
+        # Do this AFTER routes are registered so health checks can pass immediately
         try:
             _initialize_infrastructure(app)
         except Exception as e:
@@ -76,21 +95,6 @@ def create_app(config_class=None) -> Flask:
             # Don't continue - app won't work without services
             # But don't raise here, let it fail gracefully on first request
             _logger.warning("App will attempt to initialize services on first request")
-        
-        # Register blueprints
-        app.register_blueprint(webhook_blueprint)
-        app.register_blueprint(health_blueprint)
-        
-        # Add a simple test route to verify the app is working
-        @app.route("/", methods=["GET"])
-        def root():
-            """Root endpoint for testing."""
-            _logger.info("Root endpoint called")
-            return jsonify({
-                "status": "ok",
-                "service": "whatsapp-bot",
-                "message": "Service is running"
-            }), 200
         
         # Register teardown handlers
         @app.teardown_appcontext
