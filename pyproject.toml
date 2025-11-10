@@ -1,13 +1,17 @@
 [project]
 name = "python-whatsapp-bot"
 version = "0.1.0"
-description = "Add your description here"
+description = "WhatsApp bot with OpenAI integration"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "flask",
-    "python-dotenv",
-    "openai",
-    "aiohttp",
-    "requests",
+    "flask>=3.0.0",
+    "python-dotenv>=1.0.0",
+    "openai>=1.0.0",
+    "requests>=2.31.0",
+    "redis>=5.0.0",
+    "celery>=5.3.0",
+    "flask-limiter>=3.5.0",
+    "prometheus-client>=0.19.0",
+    "sentry-sdk[flask]>=2.0.0",
 ]

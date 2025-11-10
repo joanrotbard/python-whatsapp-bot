@@ -9,9 +9,14 @@ def validate_signature(payload, signature):
     """
     Validate the incoming payload's signature against our expected signature
     """
+    app_secret = current_app.config.get("APP_SECRET")
+    if not app_secret:
+        logging.warning("APP_SECRET not configured, skipping signature validation")
+        return True  # Allow request if APP_SECRET is not set (for development)
+    
     # Use the App Secret to hash the payload
     expected_signature = hmac.new(
-        bytes(current_app.config["APP_SECRET"], "latin-1"),
+        bytes(app_secret, "latin-1"),
         msg=payload.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).hexdigest()

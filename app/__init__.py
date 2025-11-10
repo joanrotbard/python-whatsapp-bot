@@ -1,16 +1,133 @@
+"""Flask application factory with dependency injection and scalability features."""
+import logging
 from flask import Flask
-from app.config import load_configurations, configure_logging
-from .views import webhook_blueprint
+
+from app.config.settings import Config, get_config
+from app.infrastructure.redis_client import RedisClientFactory
+from app.infrastructure.service_container import ServiceContainer
+from app.middleware.rate_limiter import create_rate_limiter
+from app.middleware.monitoring import register_metrics_middleware
+from app.middleware.error_handler import init_error_handlers
+from app.views import webhook_blueprint
+from app.views.health import health_blueprint
 
 
-def create_app():
+def create_app(config_class=None) -> Flask:
+    """
+    Create and configure Flask application with dependency injection.
+    
+    Implements Factory Pattern and Dependency Injection for scalability.
+    
+    Args:
+        config_class: Optional configuration class (for testing)
+        
+    Returns:
+        Configured Flask application
+    """
     app = Flask(__name__)
-
-    # Load configurations and logging settings
-    load_configurations(app)
-    configure_logging()
-
-    # Import and register blueprints, if any
+    
+    # Load configuration
+    config = config_class or get_config()
+    app.config.from_object(config)
+    
+    # Also load environment variables directly to app.config for backward compatibility
+    # This ensures variables like APP_SECRET are available via current_app.config
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    app.config["APP_SECRET"] = os.getenv("APP_SECRET")
+    app.config["APP_ID"] = os.getenv("APP_ID")
+    
+    config.validate()
+    
+    # Configure logging
+    _configure_logging()
+    
+    # Initialize infrastructure
+    _initialize_infrastructure(app)
+    
+    # Initialize middleware
+    _initialize_middleware(app)
+    
+    # Initialize services and store in app context
+    with app.app_context():
+        _initialize_services(app)
+    
+    # Register blueprints
     app.register_blueprint(webhook_blueprint)
-
+    app.register_blueprint(health_blueprint)
+    
+    # Register teardown handlers
+    @app.teardown_appcontext
+    def close_redis(error):
+        """Close Redis connections on app teardown."""
+        # Redis connection pool handles cleanup automatically
+        pass
+    
+    _logger = logging.getLogger(__name__)
+    _logger.info("Flask application initialized successfully")
+    
     return app
+
+
+def _configure_logging() -> None:
+    """Configure application logging."""
+    logging.basicConfig(
+        level=logging.INFO if not Config.DEBUG else logging.DEBUG,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+
+def _initialize_infrastructure(app: Flask) -> None:
+    """
+    Initialize infrastructure components (Redis, etc.).
+    
+    Args:
+        app: Flask application instance
+    """
+    try:
+        # Try to initialize Redis connection pool (optional)
+        redis_client = RedisClientFactory.get_client()
+        if redis_client:
+            logging.info("Infrastructure initialized successfully with Redis")
+        else:
+            logging.warning("Infrastructure initialized without Redis (threads won't persist)")
+    except Exception as e:
+        logging.warning(f"Failed to initialize Redis: {e}. Continuing without Redis.")
+        # Don't raise - allow app to continue without Redis
+
+
+def _initialize_middleware(app: Flask) -> None:
+    """
+    Initialize middleware (rate limiting, monitoring, error handling).
+    
+    Args:
+        app: Flask application instance
+    """
+    # Rate limiting
+    limiter = create_rate_limiter(app)
+    app.config['limiter'] = limiter
+    
+    # Monitoring (Prometheus metrics)
+    if Config.ENABLE_METRICS:
+        register_metrics_middleware(app)
+    
+    # Error handling (Sentry)
+    init_error_handlers(app)
+
+
+def _initialize_services(app: Flask) -> None:
+    """
+    Initialize application services using Service Container.
+    
+    Args:
+        app: Flask application instance
+    """
+    container = ServiceContainer()
+    
+    # Store container in app config for access in views/tasks
+    app.config['service_container'] = container
+    
+    # Pre-initialize services (optional, for eager loading)
+    # This can be done lazily instead
+    logging.debug("Services will be initialized on demand via ServiceContainer")

@@ -16,11 +16,18 @@ def log_http_response(response):
 
 
 def get_text_message_input(recipient, text):
+    """
+    Get text message input for WhatsApp API.
+    Recipient can be with or without + prefix - WhatsApp accepts both formats.
+    """
+    # Ensure recipient is a string and clean it
+    recipient_str = str(recipient).strip()
+    
     return json.dumps(
         {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
-            "to": recipient,
+            "to": recipient_str,
             "type": "text",
             "text": {"preview_url": False, "body": text},
         }
@@ -99,20 +106,36 @@ def send_message(data):
     try:
         response = requests.post(
             url, data=data, headers=headers, timeout=10
-        )  # 10 seconds timeout as an example
-        response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
-    except requests.Timeout:
-        logging.error("Timeout occurred while sending message")
-        return jsonify({"status": "error", "message": "Request timed out"}), 408
-    except (
-        requests.RequestException
-    ) as e:  # This will catch any general request exception
-        logging.error(f"Request failed due to: {e}")
-        return jsonify({"status": "error", "message": "Failed to send message"}), 500
-    else:
-        # Process the response as normal
+        )
+        
+        # Check response status before raising
+        if response.status_code >= 400:
+            error_msg = f"HTTP {response.status_code} error"
+            try:
+                error_body = response.json()
+                error_msg = error_body.get('error', {}).get('message', error_msg)
+            except:
+                error_msg = response.text or error_msg
+            
+            logging.error(f"Failed to send message: {error_msg}")
+            logging.error(f"Response status: {response.status_code}")
+            logging.error(f"Response body: {response.text}")
+            
+            # Return the response object so caller can check status_code
+            return response
+        
+        # Success - log and return response
         log_http_response(response)
         return response
+        
+    except requests.Timeout:
+        logging.error("Timeout occurred while sending message")
+        # Return None to indicate failure, caller should handle
+        return None
+    except requests.RequestException as e:
+        logging.error(f"Request failed due to: {e}")
+        # Return None to indicate failure, caller should handle
+        return None
 
 
 def process_text_for_whatsapp(text):
@@ -160,11 +183,42 @@ def process_whatsapp_message(body):
         # Send the actual response (typing indicator will automatically stop when message is sent)
         logging.info(f"Sending response to {wa_id}...")
         data = get_text_message_input(wa_id, response)
-        send_message(data)
-        logging.info(f"✓ Response sent successfully to {wa_id}")
+        message_response = send_message(data)
+        
+        # Check if message was sent successfully
+        if message_response is None:
+            logging.error(f"✗ Failed to send response to {wa_id}: Connection error or timeout")
+        elif hasattr(message_response, 'status_code'):
+            if message_response.status_code == 200:
+                logging.info(f"✓ Response sent successfully to {wa_id}")
+            else:
+                error_msg = f"HTTP {message_response.status_code}"
+                error_code = None
+                try:
+                    error_data = message_response.json()
+                    if 'error' in error_data:
+                        error_msg = error_data['error'].get('message', error_msg)
+                        error_code = error_data['error'].get('code')
+                except:
+                    error_msg = message_response.text or error_msg
+                
+                # Special handling for "not in allowed list" error
+                if error_code == 131030 or 'not in allowed list' in error_msg.lower():
+                    logging.error(f"✗ Failed to send response to {wa_id}: Number not in allowed list")
+                    logging.error(f"  → The normalized number {wa_id} needs to be added to your allowed recipients list.")
+                    logging.error(f"  → Go to Meta App Dashboard > WhatsApp > API Setup > 'To' field")
+                    logging.error(f"  → Add the number: {wa_id}")
+                    logging.error(f"  → Note: WhatsApp normalizes numbers, so use the exact format shown in the error")
+                else:
+                    logging.error(f"✗ Failed to send response to {wa_id}: {error_msg}")
+        else:
+            logging.warning(f"⚠ Unexpected response type when sending to {wa_id}")
+            
     except Exception as e:
-        logging.error(f"Error processing message for {wa_id}: {e}")
-        raise
+        logging.error(f"Error processing message for {wa_id}: {e}", exc_info=True)
+        # Don't raise - we want to return success to WhatsApp even if processing fails
+        # This prevents WhatsApp from retrying and spamming
+        logging.error(f"Message processing failed, but returning success to WhatsApp to prevent retries")
 
 
 def is_valid_whatsapp_message(body):
