@@ -31,10 +31,10 @@ USER appuser
 # Expose port (Railway will use PORT env var if set)
 EXPOSE 8000
 
-# Health check - use curl if available, otherwise python
-# Railway will handle health checks externally, but this helps Docker
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD sh -c 'port=${PORT:-8000} && python -c "import socket; s=socket.socket(); s.settimeout(2); result=s.connect_ex((\"127.0.0.1\", int(port))); s.close(); exit(0 if result == 0 else 1)"' || exit 1
+# Health check disabled - Railway handles health checks externally
+# The Docker health check was conflicting with Railway's internal health checks
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+#     CMD sh -c 'port=${PORT:-8000} && python -c "import socket; s=socket.socket(); s.settimeout(2); result=s.connect_ex((\"127.0.0.1\", int(port))); s.close(); exit(0 if result == 0 else 1)"' || exit 1
 
 # Run with Gunicorn
 CMD ["gunicorn", "-c", "gunicorn_config.py", "app:create_app()"]

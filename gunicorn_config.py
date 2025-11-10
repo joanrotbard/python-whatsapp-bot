@@ -57,6 +57,10 @@ user = None
 group = None
 tmp_upload_dir = None
 
+# Preload app to ensure it's ready immediately when workers start
+# This helps Railway's health checks pass faster
+preload_app = True
+
 # SSL (if needed)
 # keyfile = "/path/to/keyfile"
 # certfile = "/path/to/certfile"
