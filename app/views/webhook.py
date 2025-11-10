@@ -220,10 +220,17 @@ def api_send_message():
         # Get WhatsApp service from service container
         container = current_app.config.get('service_container')
         if not container:
-            _logger.error("Service container not available in app.config")
-            return jsonify({"status": "error", "message": "Service not available"}), 500
+            _logger.warning("Service container not in app.config, creating new instance")
+            # Fallback: create container on demand
+            from app.infrastructure.service_container import ServiceContainer
+            container = ServiceContainer()
+            current_app.config['service_container'] = container
         
-        whatsapp_service = container.get_whatsapp_service()
+        try:
+            whatsapp_service = container.get_whatsapp_service()
+        except Exception as e:
+            _logger.error(f"Failed to get WhatsApp service: {e}", exc_info=True)
+            return jsonify({"status": "error", "message": f"Service initialization error: {str(e)}"}), 500
         
         # Send message
         response = whatsapp_service.send_text_message(api_format, message_text)

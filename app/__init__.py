@@ -66,12 +66,16 @@ def create_app(config_class=None) -> Flask:
             # Some middleware might fail, but continue
         
         # Initialize services and store in app context
+        # This MUST succeed for the app to work
         try:
             with app.app_context():
                 _initialize_services(app)
+                _logger.info("Services initialized successfully")
         except Exception as e:
-            _logger.error(f"Service initialization failed: {e}", exc_info=True)
-            # Try to continue - app might still work
+            _logger.critical(f"Service initialization failed: {e}", exc_info=True)
+            # Don't continue - app won't work without services
+            # But don't raise here, let it fail gracefully on first request
+            _logger.warning("App will attempt to initialize services on first request")
         
         # Register blueprints
         app.register_blueprint(webhook_blueprint)

@@ -51,4 +51,13 @@ def init_error_handlers(app) -> None:
             "status": "error",
             "message": "Rate limit exceeded. Please try again later."
         }), 429
+    
+    @app.errorhandler(Exception)
+    def handle_unhandled_exception(e):
+        """Handle any unhandled exceptions to prevent app crashes."""
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": "An unexpected error occurred"
+        }), 500
 
