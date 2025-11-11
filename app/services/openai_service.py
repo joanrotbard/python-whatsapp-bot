@@ -41,34 +41,41 @@ class OpenAIService:
             self._assistant_cache = self.client.beta.assistants.retrieve(self.assistant_id)
         return self._assistant_cache
     
-    def _handle_active_runs(self, thread_id: str) -> None:
+    def _wait_for_active_runs(self, thread_id: str, max_wait_time: int = 60) -> None:
         """
-        Check for active runs in thread and cancel them.
+        Wait for all active runs in thread to complete before proceeding.
         
         This prevents errors when trying to add messages while a run is active.
+        Instead of cancelling, we wait for the run to finish.
         
         Args:
             thread_id: OpenAI thread ID
+            max_wait_time: Maximum time to wait in seconds (default: 60)
         """
         try:
-            # List all runs for the thread
-            runs = self.client.beta.threads.runs.list(thread_id=thread_id, limit=10)
+            start_time = time.time()
+            check_interval = 0.5  # Check every 500ms
             
-            # Find active runs (queued, in_progress, requires_action)
-            active_statuses = ["queued", "in_progress", "requires_action"]
-            for run in runs.data:
-                if run.status in active_statuses:
-                    try:
-                        # Cancel the active run
-                        self.client.beta.threads.runs.cancel(
-                            thread_id=thread_id,
-                            run_id=run.id
-                        )
-                        self._logger.warning(f"Cancelled active run {run.id} in thread {thread_id}")
-                    except Exception:
-                        pass  # Run might have completed between check and cancel
+            while time.time() - start_time < max_wait_time:
+                # List all runs for the thread
+                runs = self.client.beta.threads.runs.list(thread_id=thread_id, limit=10)
+                
+                # Find active runs (queued, in_progress, requires_action)
+                active_statuses = ["queued", "in_progress", "requires_action"]
+                active_runs = [run for run in runs.data if run.status in active_statuses]
+                
+                if not active_runs:
+                    # No active runs, safe to proceed
+                    return
+                
+                # Wait before checking again
+                time.sleep(check_interval)
+            
+            # If we've waited too long, log a warning
+            # The API call will fail with a clear error if run is still active
+            self._logger.warning(f"Active runs still present after {max_wait_time}s wait in thread {thread_id}")
         except Exception:
-            pass  # Non-critical - continue even if we can't check/cancel runs
+            pass  # Non-critical - continue even if we can't check runs
     
     def generate_response(self, message_body: str, wa_id: str, name: str) -> str:
         """
@@ -107,29 +114,32 @@ class OpenAIService:
             except Exception:
                 pass  # Non-critical
             
-            # Check for and handle active runs before adding new message
-            self._handle_active_runs(thread_id)
+            # Wait for any active runs to complete before adding new message
+            self._wait_for_active_runs(thread_id)
         
         # Add user message to thread
-        try:
-            self.client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=message_body
-            )
-        except Exception as e:
-            # If error is about active run, try to handle it and retry
-            if "active" in str(e).lower() and "run" in str(e).lower():
-                self._logger.warning("Active run detected, handling and retrying...")
-                self._handle_active_runs(thread_id)
-                # Retry adding message
+        # Retry if there's still an active run (race condition)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
                 self.client.beta.threads.messages.create(
                     thread_id=thread_id,
                     role="user",
                     content=message_body
                 )
-            else:
-                raise
+                break  # Success, exit retry loop
+            except Exception as e:
+                # If error is about active run, wait and retry
+                if "active" in str(e).lower() and "run" in str(e).lower():
+                    if attempt < max_retries - 1:
+                        self._logger.warning(f"Active run detected, waiting and retrying (attempt {attempt + 1}/{max_retries})...")
+                        self._wait_for_active_runs(thread_id, max_wait_time=10)
+                    else:
+                        # Last attempt failed, raise the error
+                        raise
+                else:
+                    # Different error, raise immediately
+                    raise
         
         # Run assistant and get response (optimized polling)
         response = self._run_assistant_optimized(thread_id)
