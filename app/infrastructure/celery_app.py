@@ -35,6 +35,11 @@ def create_celery_app(app=None) -> Celery:
         worker_max_tasks_per_child=1000,
         task_acks_late=True,
         task_reject_on_worker_lost=True,
+        
+        # Ignore task results - we don't need to store them
+        # This prevents Celery from trying to save results to Redis backend
+        # and avoids connection issues with the result backend
+        task_ignore_result=True,
     )
     
     # Update config from Flask app if provided

@@ -96,6 +96,8 @@ def handle_message() -> Tuple[str, int]:
                 try:
                     task = process_message_task.delay(body)
                     _logger.info(f"Message queued for async processing: task_id={task.id}, wa_id={wa_id}")
+                    _logger.info(f"⚠️  IMPORTANT: Check Celery worker logs to see if task is being processed")
+                    _logger.info(f"⚠️  If no worker logs appear, the Celery worker may not be running!")
                     track_message_processing(wa_id, True)
                     use_async = True
                 except Exception as e:
