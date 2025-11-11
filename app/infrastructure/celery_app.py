@@ -1,7 +1,19 @@
 """Celery application factory following Factory Pattern."""
 import os
+import sys
+import logging
 from celery import Celery
 from app.config.settings import Config
+
+# Configure logging for Celery to use stdout (Railway marks stderr as errors)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,  # Explicitly send to stdout
+    force=True  # Override any existing configuration
+)
+# Redirect stderr to stdout for Celery and its dependencies
+sys.stderr = sys.stdout
 
 
 def create_celery_app(app=None) -> Celery:
@@ -40,6 +52,11 @@ def create_celery_app(app=None) -> Celery:
         # This prevents Celery from trying to save results to Redis backend
         # and avoids connection issues with the result backend
         task_ignore_result=True,
+        
+        # Worker logging configuration - ensure logs go to stdout
+        worker_log_format='[%(asctime)s: %(levelname)s/%(processName)s] %(message)s',
+        worker_task_log_format='[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s',
+        worker_hijack_root_logger=False,  # Don't hijack root logger
     )
     
     # Update config from Flask app if provided
