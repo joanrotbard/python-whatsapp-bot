@@ -1,5 +1,6 @@
 """Message handler service coordinating WhatsApp and OpenAI services."""
 import logging
+import threading
 from typing import Dict, Any
 
 from app.services.whatsapp_service import WhatsAppService
@@ -39,21 +40,31 @@ class MessageHandler:
             
             # Extract message data (optimized - single traversal)
             value = webhook_body["entry"][0]["changes"][0]["value"]
-            contact = value["contacts"][0]
             message = value["messages"][0]
             
-            wa_id = contact["wa_id"]
-            name = contact["profile"]["name"]
+            # Extract wa_id - try contacts first, fallback to message.from
+            try:
+                contact = value["contacts"][0]
+                wa_id = contact["wa_id"]
+                name = contact.get("profile", {}).get("name", wa_id)
+            except (KeyError, IndexError):
+                # Contacts not available, use message.from field
+                wa_id = message.get("from", "unknown")
+                name = wa_id
+                self._logger.debug(f"Contacts not available, using message.from: {wa_id}")
+            
             message_id = message["id"]
             message_body = message["text"]["body"]
             
             self._logger.info(f"Received message from {wa_id} ({name}): {message_body[:50]}...")
             
-            # Send typing indicator immediately (fast operation)
-            self._logger.debug("Sending typing indicator...")
-            self._send_typing_indicator(message_id, wa_id)
+            # Send typing indicator asynchronously (non-blocking)
+            # This allows OpenAI processing to start immediately
+            self._logger.debug("Sending typing indicator (async)...")
+            self._send_typing_indicator_async(message_id, wa_id)
             
             # Generate response (optimized OpenAI calls)
+            # This starts immediately without waiting for typing indicator
             self._logger.debug("Generating OpenAI response...")
             response_text = self.openai_service.generate_response(message_body, wa_id, name)
             self._logger.debug(f"OpenAI response generated: {response_text[:50]}...")
@@ -75,16 +86,27 @@ class MessageHandler:
             self._logger.error(f"Error processing message: {e}", exc_info=True)
             # Don't raise - return success to WhatsApp to prevent retries
     
-    def _send_typing_indicator(self, message_id: str, wa_id: str) -> None:
-        """Send typing indicator."""
-        try:
-            response = self.whatsapp_service.send_typing_indicator(message_id)
-            if response:
-                self._logger.info(f"✓ Typing indicator sent to {wa_id}")
-            else:
-                self._logger.warning(f"⚠ Failed to send typing indicator to {wa_id}")
-        except Exception as e:
-            self._logger.warning(f"Error sending typing indicator: {e}")
+    def _send_typing_indicator_async(self, message_id: str, wa_id: str) -> None:
+        """
+        Send typing indicator asynchronously in a background thread.
+        
+        This doesn't block the main processing flow, allowing OpenAI
+        to start generating a response immediately.
+        """
+        def _send_in_background():
+            try:
+                response = self.whatsapp_service.send_typing_indicator(message_id)
+                if response:
+                    self._logger.debug(f"✓ Typing indicator sent to {wa_id}")
+                else:
+                    self._logger.debug(f"⚠ Failed to send typing indicator to {wa_id}")
+            except Exception as e:
+                self._logger.debug(f"Error sending typing indicator: {e}")
+        
+        # Start in background thread - fire and forget
+        thread = threading.Thread(target=_send_in_background, daemon=True)
+        thread.start()
+        self._logger.debug(f"Typing indicator thread started for {wa_id}")
     
     def _send_response(self, wa_id: str, response_text: str) -> None:
         """Send response message."""
