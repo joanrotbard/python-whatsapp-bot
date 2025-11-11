@@ -64,21 +64,19 @@ class OpenAIService:
             self._logger.warning(f"Could not get thread from repository: {e}, creating new thread")
         
         if thread_id is None:
-            self._logger.info(f"Creating new thread for {name} ({wa_id})")
-            # Create thread - this is fast, no need to retrieve it
+            # Create thread
             thread = self.client.beta.threads.create()
             thread_id = thread.id
             try:
                 self.thread_repository.save_thread_id(wa_id, thread_id)
-            except Exception as e:
-                self._logger.warning(f"Could not save thread to repository: {e}, continuing without persistence")
+            except Exception:
+                pass  # Non-critical
         else:
-            # Extend TTL when thread is used (reset expiration timer)
+            # Extend TTL when thread is used
             try:
                 self.thread_repository.extend_ttl(wa_id)
-            except Exception as e:
-                self._logger.debug(f"Could not extend TTL: {e}")
-            self._logger.debug(f"Using existing thread {thread_id} for {name} ({wa_id})")
+            except Exception:
+                pass  # Non-critical
         
         # Add user message to thread (this is fast)
         self.client.beta.threads.messages.create(
@@ -146,10 +144,6 @@ class OpenAIService:
                 run_id=run.id
             )
             attempt += 1
-            
-            # Log polling progress every 10 attempts to monitor performance
-            if attempt % 10 == 0:
-                self._logger.debug(f"Polling run {run.id}: attempt {attempt}, status={run.status}, elapsed={elapsed:.1f}s")
         
         # Handle terminal states
         if run.status == "failed":
@@ -174,6 +168,4 @@ class OpenAIService:
             raise ValueError("No messages returned from assistant")
         
         response_text = messages.data[0].content[0].text.value
-        self._logger.info(f"Generated response ({len(response_text)} chars) for thread {thread_id}")
-        
         return response_text

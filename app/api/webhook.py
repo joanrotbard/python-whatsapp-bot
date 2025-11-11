@@ -10,19 +10,20 @@ from app.utils.webhook_parser import WebhookParser
 from app.middleware.monitoring import track_message_processing
 
 # Try to import Celery task, but don't fail if Celery is not available
+CELERY_AVAILABLE = False
+process_message_task = None
+celery_app = None
+
 try:
     from app.tasks.message_tasks import process_message_task
+    from app.infrastructure.celery_app import celery_app
     CELERY_AVAILABLE = True
 except Exception:
-    CELERY_AVAILABLE = False
-    process_message_task = None
+    pass
 
 
 webhook_blueprint = Blueprint("webhook", __name__)
 _logger = logging.getLogger(__name__)
-
-if not CELERY_AVAILABLE:
-    _logger.warning("Celery not available, will use synchronous processing")
 
 
 def _handle_status_updates(webhook_body: Dict[str, Any]) -> None:
@@ -40,15 +41,9 @@ def _handle_status_updates(webhook_body: Dict[str, Any]) -> None:
             f"recipient={recipient_id}, timestamp={timestamp}"
         )
         
-        if status_type == "sent":
-            _logger.info(f"✓ Message {message_id} sent to {recipient_id}")
-        elif status_type == "delivered":
-            _logger.info(f"✓✓ Message {message_id} delivered to {recipient_id}")
-        elif status_type == "read":
-            _logger.info(f"✓✓✓ Message {message_id} read by {recipient_id}")
-        elif status_type == "failed":
+        if status_type == "failed":
             errors = status.get("errors", [])
-            _logger.error(f"✗ Message {message_id} failed: {errors}")
+            _logger.error(f"Message {message_id} failed: {errors}")
 
 
 def handle_message() -> Tuple[str, int]:
@@ -65,16 +60,6 @@ def handle_message() -> Tuple[str, int]:
     if not body:
         return jsonify({"status": "error", "message": "Empty request body"}), 400
     
-    # Log webhook type
-    if body.get("entry"):
-        entry = body["entry"][0] if body["entry"] else {}
-        changes = entry.get("changes", [{}])[0] if entry.get("changes") else {}
-        value = changes.get("value", {})
-        
-        if value.get("messages"):
-            _logger.info("Incoming webhook: Message event")
-        elif value.get("statuses"):
-            _logger.info("Incoming webhook: Status update event")
     
     # Handle status updates (synchronous, fast)
     if WebhookParser.is_status_update(body):
@@ -92,40 +77,40 @@ def handle_message() -> Tuple[str, int]:
             
             # Try async processing with Celery first, fallback to sync if unavailable
             use_async = False
-            if CELERY_AVAILABLE:
+            if CELERY_AVAILABLE and celery_app:
                 try:
-                    task = process_message_task.delay(body)
-                    _logger.info(f"Message queued for async processing: task_id={task.id}, wa_id={wa_id}")
-                    _logger.info(f"⚠️  IMPORTANT: Check Celery worker logs to see if task is being processed")
-                    _logger.info(f"⚠️  If no worker logs appear, the Celery worker may not be running!")
-                    track_message_processing(wa_id, True)
-                    use_async = True
-                except Exception as e:
-                    # Celery not available or error - fallback to synchronous processing
-                    _logger.warning(f"Celery unavailable, processing synchronously: {e}")
+                    # Check if Celery workers are available (with timeout)
+                    try:
+                        inspect = celery_app.control.inspect(timeout=2.0)
+                        active_workers = inspect.active()
+                        
+                        if not active_workers:
+                            use_async = False
+                        else:
+                            task = process_message_task.delay(body)
+                            _logger.info(f"Message queued for async processing: task_id={task.id}, wa_id={wa_id}")
+                            track_message_processing(wa_id, True)
+                            use_async = True
+                    except Exception:
+                        use_async = False
+                except Exception:
                     use_async = False
             
             # If async failed, process synchronously (like before)
             if not use_async:
                 try:
-                    _logger.info(f"Processing message synchronously for {wa_id}")
-                    # Get message handler from service container
                     container = current_app.config.get('service_container')
                     if not container:
-                        _logger.error("Service container not available in app.config")
+                        _logger.error("Service container not available")
                         return jsonify({"status": "error", "message": "Service not available"}), 500
                     
-                    _logger.debug("Getting message handler from container...")
                     message_handler = container.get_message_handler()
-                    _logger.debug("Message handler obtained, processing message...")
-                    
                     message_handler.process_incoming_message(body)
-                    _logger.info(f"✓ Message processed synchronously for {wa_id}")
+                    _logger.info(f"Message processed synchronously for {wa_id}")
                     track_message_processing(wa_id, True)
                 except Exception as e:
-                    _logger.error(f"✗ Error processing message synchronously: {e}", exc_info=True)
+                    _logger.error(f"Error processing message: {e}", exc_info=True)
                     track_message_processing(wa_id, False)
-                    # Still return 200 to prevent WhatsApp retries
             
             return jsonify({"status": "ok"}), 200
         else:

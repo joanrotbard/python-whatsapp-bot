@@ -20,7 +20,7 @@ class CallbackTask(Task):
     
     def on_success(self, retval, task_id, args, kwargs):
         """Handle task success."""
-        logger.debug(f"Task {task_id} completed successfully")
+        pass
 
 
 @celery_app.task(
@@ -44,48 +44,27 @@ def process_message_task(self, webhook_body: Dict[str, Any]) -> Dict[str, Any]:
         Processing result dictionary
     """
     try:
-        logger.info("=" * 80)
-        logger.info("CELERY TASK STARTED - Processing WhatsApp message")
-        logger.info(f"Task ID: {self.request.id}")
-        logger.info("=" * 80)
-        
         # Extract wa_id for logging
         try:
             wa_id = webhook_body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
-            logger.info(f"Processing message for wa_id: {wa_id}")
-        except (KeyError, IndexError) as e:
+        except (KeyError, IndexError):
             wa_id = "unknown"
-            logger.warning(f"Could not extract wa_id from webhook: {e}")
-            logger.warning(f"Webhook body keys: {list(webhook_body.keys())}")
         
-        # Get service container (dependency injection)
-        logger.info("Step 1: Getting service container...")
+        logger.info(f"Processing message for {wa_id}")
+        
+        # Get service container and process message
         container = ServiceContainer()
-        logger.info("✓ Service container obtained")
-        
-        logger.info("Step 2: Getting message handler...")
         message_handler = container.get_message_handler()
-        logger.info("✓ Message handler obtained")
-        
-        logger.info("Step 3: Processing incoming message...")
-        # Process message
         message_handler.process_incoming_message(webhook_body)
-        logger.info("✓ Message processing completed")
         
         # Track success
         track_message_processing(wa_id, True)
-        logger.info("=" * 80)
-        logger.info(f"✓✓✓ CELERY TASK COMPLETED SUCCESSFULLY for {wa_id}")
-        logger.info("=" * 80)
+        logger.info(f"Message processed successfully for {wa_id}")
         
         return {"status": "success", "message": "Message processed successfully"}
         
     except Exception as exc:
-        logger.error("=" * 80)
-        logger.error(f"✗✗✗ CELERY TASK FAILED: {exc}")
-        logger.error(f"Task ID: {self.request.id}")
-        logger.error(f"Exception type: {type(exc).__name__}")
-        logger.error("=" * 80, exc_info=True)
+        logger.error(f"Task failed: {exc}", exc_info=True)
         
         # Track failure
         try:
@@ -95,6 +74,5 @@ def process_message_task(self, webhook_body: Dict[str, Any]) -> Dict[str, Any]:
         track_message_processing(wa_id, False)
         
         # Retry with exponential backoff
-        logger.warning(f"Retrying task (attempt {self.request.retries + 1}/{self.max_retries})...")
         raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
 
