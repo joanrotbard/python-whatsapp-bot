@@ -41,6 +41,35 @@ class OpenAIService:
             self._assistant_cache = self.client.beta.assistants.retrieve(self.assistant_id)
         return self._assistant_cache
     
+    def _handle_active_runs(self, thread_id: str) -> None:
+        """
+        Check for active runs in thread and cancel them.
+        
+        This prevents errors when trying to add messages while a run is active.
+        
+        Args:
+            thread_id: OpenAI thread ID
+        """
+        try:
+            # List all runs for the thread
+            runs = self.client.beta.threads.runs.list(thread_id=thread_id, limit=10)
+            
+            # Find active runs (queued, in_progress, requires_action)
+            active_statuses = ["queued", "in_progress", "requires_action"]
+            for run in runs.data:
+                if run.status in active_statuses:
+                    try:
+                        # Cancel the active run
+                        self.client.beta.threads.runs.cancel(
+                            thread_id=thread_id,
+                            run_id=run.id
+                        )
+                        self._logger.warning(f"Cancelled active run {run.id} in thread {thread_id}")
+                    except Exception:
+                        pass  # Run might have completed between check and cancel
+        except Exception:
+            pass  # Non-critical - continue even if we can't check/cancel runs
+    
     def generate_response(self, message_body: str, wa_id: str, name: str) -> str:
         """
         Generate a response using OpenAI Assistant with optimized API calls.
@@ -77,13 +106,30 @@ class OpenAIService:
                 self.thread_repository.extend_ttl(wa_id)
             except Exception:
                 pass  # Non-critical
+            
+            # Check for and handle active runs before adding new message
+            self._handle_active_runs(thread_id)
         
-        # Add user message to thread (this is fast)
-        self.client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=message_body
-        )
+        # Add user message to thread
+        try:
+            self.client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=message_body
+            )
+        except Exception as e:
+            # If error is about active run, try to handle it and retry
+            if "active" in str(e).lower() and "run" in str(e).lower():
+                self._logger.warning("Active run detected, handling and retrying...")
+                self._handle_active_runs(thread_id)
+                # Retry adding message
+                self.client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=message_body
+                )
+            else:
+                raise
         
         # Run assistant and get response (optimized polling)
         response = self._run_assistant_optimized(thread_id)
