@@ -8,8 +8,7 @@ from app.infrastructure.service_container import ServiceContainer
 from app.middleware.rate_limiter import create_rate_limiter
 from app.middleware.monitoring import register_metrics_middleware
 from app.middleware.error_handler import init_error_handlers
-from app.views import webhook_blueprint
-from app.views.health import health_blueprint
+from app.api import webhook_blueprint, messages_blueprint, health_blueprint
 
 
 def create_app(config_class=None) -> Flask:
@@ -47,6 +46,7 @@ def create_app(config_class=None) -> Flask:
         # Register blueprints IMMEDIATELY so routes are available right away
         # This allows Railway's health checks to pass even during initialization
         app.register_blueprint(webhook_blueprint)
+        app.register_blueprint(messages_blueprint)
         app.register_blueprint(health_blueprint)
         
         # Add a simple test route to verify the app is working
