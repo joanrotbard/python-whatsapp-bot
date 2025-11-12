@@ -30,6 +30,45 @@ class SearchFlightsHandler(IFunctionHandler):
         """Get the name of the function this handler processes."""
         return "search_flights"
     
+    def get_function_schema(self) -> Dict[str, Any]:
+        """
+        Get OpenAI function schema for search_flights.
+        
+        Returns:
+            OpenAI function schema dictionary
+        """
+        return {
+            "type": "function",
+            "function": {
+                "name": "search_flights",
+                "description": "Find and suggest flight options based on user preferences (origin, destination, travel dates, number of passengers, etc.)",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "origin": {
+                            "type": "string",
+                            "description": "Origin airport or city code (e.g., JFK, LAX, New York, NYC)"
+                        },
+                        "destination": {
+                            "type": "string",
+                            "description": "Destination airport or city code (e.g., LHR, CDG, Paris, London)"
+                        },
+                        "date": {
+                            "type": "string",
+                            "description": "Travel date in YYYY-MM-DD format (e.g., 2024-06-15)"
+                        },
+                        "passengers": {
+                            "type": "integer",
+                            "description": "Number of passengers",
+                            "default": 1,
+                            "minimum": 1
+                        }
+                    },
+                    "required": ["origin", "destination", "date"]
+                }
+            }
+        }
+    
     def validate_parameters(self, parameters: Dict[str, Any]) -> bool:
         """
         Validate function parameters before execution.

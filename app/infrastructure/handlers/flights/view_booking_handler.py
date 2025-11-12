@@ -30,6 +30,31 @@ class ViewBookingHandler(IFunctionHandler):
         """Get the name of the function this handler processes."""
         return "view_booking"
     
+    def get_function_schema(self) -> Dict[str, Any]:
+        """
+        Get OpenAI function schema for view_booking.
+        
+        Returns:
+            OpenAI function schema dictionary
+        """
+        return {
+            "type": "function",
+            "function": {
+                "name": "view_booking",
+                "description": "Show details of an existing booking",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "booking_id": {
+                            "type": "string",
+                            "description": "Booking identifier (e.g., BK12345678)"
+                        }
+                    },
+                    "required": ["booking_id"]
+                }
+            }
+        }
+    
     def validate_parameters(self, parameters: Dict[str, Any]) -> bool:
         """
         Validate function parameters before execution.

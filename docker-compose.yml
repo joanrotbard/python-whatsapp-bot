@@ -16,7 +16,8 @@ services:
       
       # OpenAI Configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_ASSISTANT_ID=${OPENAI_ASSISTANT_ID}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_SYSTEM_PROMPT=${OPENAI_SYSTEM_PROMPT:-}
       
       # Redis Configuration
       - REDIS_URL=redis://redis:6379/0
@@ -61,7 +62,8 @@ services:
       
       # OpenAI Configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_ASSISTANT_ID=${OPENAI_ASSISTANT_ID}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_SYSTEM_PROMPT=${OPENAI_SYSTEM_PROMPT:-}
       
       # Redis Configuration
       - REDIS_URL=redis://redis:6379/0

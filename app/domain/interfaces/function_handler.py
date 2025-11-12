@@ -56,4 +56,26 @@ class IFunctionHandler(ABC):
             True if parameters are valid, False otherwise
         """
         pass
+    
+    @abstractmethod
+    def get_function_schema(self) -> Dict[str, Any]:
+        """
+        Get OpenAI function schema for this handler.
+        
+        Returns:
+            Dictionary in OpenAI function calling format:
+            {
+                "type": "function",
+                "function": {
+                    "name": "function_name",
+                    "description": "Function description",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {...},
+                        "required": [...]
+                    }
+                }
+            }
+        """
+        pass
 

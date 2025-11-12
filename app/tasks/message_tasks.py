@@ -3,8 +3,8 @@ import logging
 from typing import Dict, Any
 from celery import Task
 from app.infrastructure.celery_app import celery_app
-from app.services.message_handler import MessageHandler
-from app.infrastructure.service_container import ServiceContainer
+from app.infrastructure.adapters.message_handler import MessageHandler
+from app.infrastructure.di.service_container import ServiceContainer
 from app.middleware.monitoring import track_message_processing, track_openai_call
 
 

@@ -4,11 +4,11 @@ from flask import Flask, jsonify
 
 from app.config.settings import Config, get_config
 from app.infrastructure.redis_client import RedisClientFactory
-from app.infrastructure.service_container import ServiceContainer
+from app.infrastructure.di.service_container import ServiceContainer
 from app.middleware.rate_limiter import create_rate_limiter
 from app.middleware.monitoring import register_metrics_middleware
 from app.middleware.error_handler import init_error_handlers
-from app.api import webhook_blueprint, messages_blueprint, health_blueprint
+from app.api import webhook_blueprint, messages_blueprint, health_blueprint, chat_blueprint
 
 
 def create_app(config_class=None) -> Flask:
@@ -48,6 +48,7 @@ def create_app(config_class=None) -> Flask:
         app.register_blueprint(webhook_blueprint)
         app.register_blueprint(messages_blueprint)
         app.register_blueprint(health_blueprint)
+        app.register_blueprint(chat_blueprint)
         
         # Add a simple test route to verify the app is working
         @app.route("/", methods=["GET"])

@@ -1,7 +1,7 @@
-"""Message handler service (Adapter Pattern - backward compatibility).
+"""Message handler adapter (Adapter Pattern).
 
-This is a compatibility layer that adapts the new use case pattern
-to the existing MessageHandler interface.
+This adapter adapts the use case pattern to legacy interfaces.
+Part of the Infrastructure layer - handles integration concerns.
 """
 import logging
 from typing import Dict, Any
@@ -14,7 +14,7 @@ class MessageHandler:
     Message handler adapter for backward compatibility.
     
     Adapts ProcessMessageUseCase to existing MessageHandler interface.
-    Follows Adapter Pattern.
+    Follows Adapter Pattern - part of Infrastructure layer.
     """
     
     def __init__(self, use_case: ProcessMessageUseCase):

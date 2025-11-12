@@ -30,6 +30,31 @@ class ViewTravelHistoryHandler(IFunctionHandler):
         """Get the name of the function this handler processes."""
         return "view_travel_history"
     
+    def get_function_schema(self) -> Dict[str, Any]:
+        """
+        Get OpenAI function schema for view_travel_history.
+        
+        Returns:
+            OpenAI function schema dictionary
+        """
+        return {
+            "type": "function",
+            "function": {
+                "name": "view_travel_history",
+                "description": "Display the traveler's past or upcoming trips. Shows all bookings (confirmed, cancelled, and completed) for the user.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "user_id": {
+                            "type": "string",
+                            "description": "User identifier. If not provided, will use the current user's ID from the conversation context."
+                        }
+                    },
+                    "required": []
+                }
+            }
+        }
+    
     def validate_parameters(self, parameters: Dict[str, Any]) -> bool:
         """
         Validate function parameters before execution.

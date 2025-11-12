@@ -3,8 +3,11 @@ import logging
 from typing import Dict, Any
 
 from app.domain.interfaces.message_provider import IMessageProvider
-from app.domain.interfaces.ai_provider import IAIProvider
 from app.domain.entities.message import Message
+from app.application.services.conversation_service import (
+    ConversationService,
+    ConversationRequest
+)
 from app.utils.text_processor import WhatsAppTextProcessor
 
 
@@ -13,31 +16,34 @@ logger = logging.getLogger(__name__)
 
 class ProcessMessageUseCase:
     """
-    Use case for processing incoming messages.
+    Use case for processing incoming messages from message providers (e.g., WhatsApp).
     
     Follows Use Case Pattern - encapsulates application-specific business logic.
-    Depends on abstractions (interfaces) not concrete implementations.
+    Uses ConversationService for core AI logic, keeping provider-specific concerns separate.
     """
     
     def __init__(
         self,
         message_provider: IMessageProvider,
-        ai_provider: IAIProvider
+        conversation_service: ConversationService
     ):
         """
         Initialize use case with dependencies (Dependency Injection).
         
         Args:
-            message_provider: Message provider interface
-            ai_provider: AI provider interface
+            message_provider: Message provider interface (WhatsApp, etc.)
+            conversation_service: Core conversation service for AI interactions
         """
         self.message_provider = message_provider
-        self.ai_provider = ai_provider
+        self.conversation_service = conversation_service
         self.text_processor = WhatsAppTextProcessor()
     
     def execute(self, webhook_body: Dict[str, Any]) -> None:
         """
-        Execute the use case - process incoming message.
+        Execute the use case - process incoming message from webhook.
+        
+        This method handles provider-specific concerns (parsing webhook, sending messages)
+        while delegating core AI logic to ConversationService.
         
         Args:
             webhook_body: Raw webhook payload from message provider
@@ -56,23 +62,38 @@ class ProcessMessageUseCase:
             provider=parsed_data["provider"]
         )
         
-        # Send typing indicator
+        # Send typing indicator (provider-specific)
         try:
             self.message_provider.send_typing_indicator(message.message_id)
         except Exception:
             pass  # Non-critical
         
-        # Generate AI response
-        response_text = self.ai_provider.generate_response(
-            message_body=message.message_body,
+        # Use conversation service for AI response (provider-agnostic)
+        conversation_request = ConversationRequest(
             user_id=message.user_id,
-            user_name=message.user_name
+            user_name=message.user_name,
+            message=message.message_body
         )
         
-        # Process text for provider-specific formatting
-        processed_text = self.text_processor.process(response_text)
+        conversation_response = self.conversation_service.process_message(conversation_request)
         
-        # Send response
+        if not conversation_response.success:
+            logger.error(
+                f"Failed to generate response for {message.user_id}: "
+                f"{conversation_response.error}"
+            )
+            # Send error message to user
+            error_message = conversation_response.response_text
+        else:
+            error_message = None
+            response_text = conversation_response.response_text
+        
+        # Process text for provider-specific formatting
+        processed_text = self.text_processor.process(
+            error_message if error_message else response_text
+        )
+        
+        # Send response via message provider
         result = self.message_provider.send_text_message(
             recipient=message.user_id,
             message=processed_text

@@ -58,7 +58,7 @@ def send_message():
         if not container:
             _logger.warning("Service container not in app.config, creating new instance")
             # Fallback: create container on demand
-            from app.infrastructure.service_container import ServiceContainer
+            from app.infrastructure.di.service_container import ServiceContainer
             container = ServiceContainer()
             current_app.config['service_container'] = container
         

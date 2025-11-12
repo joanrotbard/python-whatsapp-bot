@@ -21,7 +21,8 @@ class Config:
     
     # OpenAI Configuration
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
-    OPENAI_ASSISTANT_ID: Optional[str] = os.getenv("OPENAI_ASSISTANT_ID")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    OPENAI_SYSTEM_PROMPT: Optional[str] = os.getenv("OPENAI_SYSTEM_PROMPT")
     
     # Redis Configuration
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -50,7 +51,6 @@ class Config:
             ("ACCESS_TOKEN", cls.ACCESS_TOKEN),
             ("PHONE_NUMBER_ID", cls.PHONE_NUMBER_ID),
             ("OPENAI_API_KEY", cls.OPENAI_API_KEY),
-            ("OPENAI_ASSISTANT_ID", cls.OPENAI_ASSISTANT_ID),
         ]
         
         missing = [name for name, value in required_vars if not value]

@@ -33,7 +33,7 @@ class IAIProvider(ABC):
             message_body: User's message text
             user_id: Unique user identifier
             user_name: User's display name
-            function_handler: Optional handler for function calls
+            function_handler: Optional handler for function calls (deprecated, kept for compatibility)
             
         Returns:
             Generated response text
@@ -46,13 +46,16 @@ class IAIProvider(ABC):
     @abstractmethod
     def get_thread_id(self, user_id: str) -> Optional[str]:
         """
-        Get conversation thread ID for user.
+        Get conversation thread ID for user (backward compatibility).
+        
+        For Chat Completions API, this may return user_id directly.
+        This method exists for backward compatibility.
         
         Args:
             user_id: Unique user identifier
             
         Returns:
-            Thread ID if exists, None otherwise
+            Conversation identifier (may be user_id or thread_id)
         """
         pass
 

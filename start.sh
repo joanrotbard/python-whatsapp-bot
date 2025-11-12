@@ -42,7 +42,7 @@ fi
 echo -e "${YELLOW}Verificando variables de entorno...${NC}"
 source .env
 
-REQUIRED_VARS=("ACCESS_TOKEN" "PHONE_NUMBER_ID" "OPENAI_API_KEY" "OPENAI_ASSISTANT_ID")
+REQUIRED_VARS=("ACCESS_TOKEN" "PHONE_NUMBER_ID" "OPENAI_API_KEY")
 MISSING_VARS=()
 
 for var in "${REQUIRED_VARS[@]}"; do

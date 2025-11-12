@@ -30,6 +30,35 @@ class CancelBookingHandler(IFunctionHandler):
         """Get the name of the function this handler processes."""
         return "cancel_booking"
     
+    def get_function_schema(self) -> Dict[str, Any]:
+        """
+        Get OpenAI function schema for cancel_booking.
+        
+        Returns:
+            OpenAI function schema dictionary
+        """
+        return {
+            "type": "function",
+            "function": {
+                "name": "cancel_booking",
+                "description": "Cancel a booking if the traveler confirms. Always confirm with the user before canceling.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "booking_id": {
+                            "type": "string",
+                            "description": "Booking identifier to cancel (e.g., BK12345678)"
+                        },
+                        "confirmation": {
+                            "type": "boolean",
+                            "description": "Whether the user has confirmed they want to cancel this booking. Must be true to proceed with cancellation."
+                        }
+                    },
+                    "required": ["booking_id", "confirmation"]
+                }
+            }
+        }
+    
     def validate_parameters(self, parameters: Dict[str, Any]) -> bool:
         """
         Validate function parameters before execution.

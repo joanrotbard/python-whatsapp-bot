@@ -171,3 +171,4 @@ class RedisThreadRepository(IThreadRepository):
         except redis.RedisError as e:
             self._logger.error(f"Error getting all threads: {e}")
             return {}
+
