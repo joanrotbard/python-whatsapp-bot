@@ -20,7 +20,7 @@ def health_check():
     try:
         response = jsonify({
             "status": "healthy",
-            "service": "whatsapp-bot"
+            "service": "message-bot"
         })
         _logger.info("Health check response sent successfully")
         return response, 200
@@ -75,6 +75,6 @@ def liveness_check():
     """
     return jsonify({
         "status": "alive",
-        "service": "whatsapp-bot"
+        "service": "message-bot"
     }), 200
 

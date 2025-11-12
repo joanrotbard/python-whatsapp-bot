@@ -56,7 +56,7 @@ def create_app(config_class=None) -> Flask:
             _logger.info("Root endpoint called")
             return jsonify({
                 "status": "ok",
-                "service": "whatsapp-bot",
+                "service": "message-bot",
                 "message": "Service is running"
             }), 200
         

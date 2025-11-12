@@ -1,12 +1,13 @@
-"""Repository for managing OpenAI thread storage using Redis (Strategy Pattern)."""
+"""Repository for managing OpenAI thread storage using Redis (Repository Pattern)."""
 import logging
 from typing import Optional
 import redis
 
+from app.domain.interfaces.thread_repository import IThreadRepository
 from app.config.settings import Config
 
 
-class ThreadRepository:
+class RedisThreadRepository(IThreadRepository):
     """
     Repository for managing thread storage using Redis.
     

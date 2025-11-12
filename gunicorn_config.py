@@ -47,7 +47,7 @@ import sys
 sys.stderr = sys.stdout
 
 # Process naming
-proc_name = "whatsapp-bot"
+proc_name = "message-bot"
 
 # Server mechanics
 daemon = False

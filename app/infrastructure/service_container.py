@@ -1,28 +1,28 @@
 """Service container for dependency injection (IoC Container Pattern)."""
 import logging
 from typing import Optional
+import os
 
-from app.infrastructure.redis_client import RedisClientFactory
-from app.repositories.thread_repository import ThreadRepository
-from app.services.whatsapp_service import WhatsAppService
-from app.services.openai_service import OpenAIService
-from app.services.message_handler import MessageHandler
-from app.config.settings import Config
+from app.domain.interfaces.message_provider import IMessageProvider
+from app.domain.interfaces.ai_provider import IAIProvider
+from app.domain.interfaces.thread_repository import IThreadRepository
+from app.application.use_cases.process_message_use_case import ProcessMessageUseCase
+from app.infrastructure.factories.provider_factory import ProviderFactory
 
 
 class ServiceContainer:
     """
     Service container implementing Dependency Injection pattern.
     
-    Follows Singleton pattern for service instances and
-    Dependency Inversion Principle.
+    Follows Singleton pattern and Dependency Inversion Principle.
+    Uses Factory Pattern to create providers based on configuration.
     """
     
     _instance: Optional['ServiceContainer'] = None
-    _thread_repository: Optional[ThreadRepository] = None
-    _whatsapp_service: Optional[WhatsAppService] = None
-    _openai_service: Optional[OpenAIService] = None
-    _message_handler: Optional[MessageHandler] = None
+    _thread_repository: Optional[IThreadRepository] = None
+    _message_provider: Optional[IMessageProvider] = None
+    _ai_provider: Optional[IAIProvider] = None
+    _process_message_use_case: Optional[ProcessMessageUseCase] = None
     
     def __new__(cls):
         """Singleton pattern implementation."""
@@ -34,56 +34,71 @@ class ServiceContainer:
         """Initialize service container."""
         self._logger = logging.getLogger(__name__)
     
-    def get_thread_repository(self) -> ThreadRepository:
+    def get_thread_repository(self) -> IThreadRepository:
         """Get or create thread repository instance."""
         if self._thread_repository is None:
+            storage_type = os.getenv("THREAD_STORAGE_TYPE", "redis")
             try:
-                redis_client = RedisClientFactory.get_client()
-                self._thread_repository = ThreadRepository(
-                    redis_client=redis_client,
-                    ttl=3600  # 1 hour TTL
-                )
-                self._logger.info("ThreadRepository created with Redis")
+                self._thread_repository = ProviderFactory.create_thread_repository(storage_type)
+                self._logger.info(f"ThreadRepository created with {storage_type}")
             except Exception as e:
-                self._logger.error(f"Failed to create ThreadRepository with Redis: {e}")
-                # Fallback: create repository without Redis (will fail gracefully)
-                self._thread_repository = ThreadRepository(
-                    redis_client=None,
-                    ttl=3600
-                )
-                self._logger.warning("ThreadRepository created without Redis (threads will not persist)")
+                self._logger.error(f"Failed to create ThreadRepository: {e}")
+                raise
         return self._thread_repository
     
-    def get_whatsapp_service(self) -> WhatsAppService:
-        """Get or create WhatsApp service instance."""
-        if self._whatsapp_service is None:
-            self._whatsapp_service = WhatsAppService()
-            self._logger.debug("WhatsAppService created")
-        return self._whatsapp_service
+    def get_message_provider(self) -> IMessageProvider:
+        """Get or create message provider instance."""
+        if self._message_provider is None:
+            provider_type = os.getenv("MESSAGE_PROVIDER", "whatsapp")
+            try:
+                self._message_provider = ProviderFactory.create_message_provider(provider_type)
+                self._logger.info(f"MessageProvider created: {provider_type}")
+            except Exception as e:
+                self._logger.error(f"Failed to create MessageProvider: {e}")
+                raise
+        return self._message_provider
     
-    def get_openai_service(self) -> OpenAIService:
-        """Get or create OpenAI service instance."""
-        if self._openai_service is None:
+    def get_ai_provider(self) -> IAIProvider:
+        """Get or create AI provider instance."""
+        if self._ai_provider is None:
+            provider_type = os.getenv("AI_PROVIDER", "openai")
             thread_repository = self.get_thread_repository()
-            self._openai_service = OpenAIService(thread_repository)
-            self._logger.debug("OpenAIService created")
-        return self._openai_service
+            try:
+                self._ai_provider = ProviderFactory.create_ai_provider(
+                    provider_type=provider_type,
+                    thread_repository=thread_repository
+                )
+                self._logger.info(f"AIProvider created: {provider_type}")
+            except Exception as e:
+                self._logger.error(f"Failed to create AIProvider: {e}")
+                raise
+        return self._ai_provider
     
-    def get_message_handler(self) -> MessageHandler:
-        """Get or create message handler instance."""
-        if self._message_handler is None:
-            whatsapp_service = self.get_whatsapp_service()
-            openai_service = self.get_openai_service()
-            self._message_handler = MessageHandler(whatsapp_service, openai_service)
-            self._logger.debug("MessageHandler created")
-        return self._message_handler
+    def get_process_message_use_case(self) -> ProcessMessageUseCase:
+        """Get or create process message use case instance."""
+        if self._process_message_use_case is None:
+            message_provider = self.get_message_provider()
+            ai_provider = self.get_ai_provider()
+            self._process_message_use_case = ProcessMessageUseCase(
+                message_provider=message_provider,
+                ai_provider=ai_provider
+            )
+            self._logger.info("ProcessMessageUseCase created")
+        return self._process_message_use_case
+    
+    # Backward compatibility methods
+    def get_message_handler(self):
+        """Get message handler (backward compatibility)."""
+        from app.services.message_handler import MessageHandler
+        use_case = self.get_process_message_use_case()
+        return MessageHandler(use_case)
     
     @classmethod
     def reset(cls) -> None:
         """Reset all service instances (useful for testing)."""
         cls._instance = None
         cls._thread_repository = None
-        cls._whatsapp_service = None
-        cls._openai_service = None
-        cls._message_handler = None
+        cls._message_provider = None
+        cls._ai_provider = None
+        cls._process_message_use_case = None
 
