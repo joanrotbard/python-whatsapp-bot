@@ -2,13 +2,14 @@
 import os
 import time
 import logging
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime, timedelta
 from openai import OpenAI
 from dotenv import load_dotenv
 
 from app.domain.interfaces.ai_provider import IAIProvider
 from app.domain.interfaces.thread_repository import IThreadRepository
+from app.domain.interfaces.vertical_manager import IVerticalManager
 
 
 class OpenAIProvider(IAIProvider):
@@ -18,12 +19,17 @@ class OpenAIProvider(IAIProvider):
     Implements IAIProvider interface following Strategy Pattern.
     """
     
-    def __init__(self, thread_repository: IThreadRepository):
+    def __init__(
+        self,
+        thread_repository: IThreadRepository,
+        vertical_manager: Optional[IVerticalManager] = None
+    ):
         """
         Initialize OpenAI provider.
         
         Args:
             thread_repository: Repository for thread storage
+            vertical_manager: Optional vertical manager for function calls
         """
         load_dotenv()
         self.api_key = os.getenv("OPENAI_API_KEY")
@@ -36,6 +42,7 @@ class OpenAIProvider(IAIProvider):
         
         self.client = OpenAI(api_key=self.api_key)
         self.thread_repository = thread_repository
+        self.vertical_manager = vertical_manager
         self._logger = logging.getLogger(__name__)
         self._assistant_cache = None
     
@@ -57,7 +64,13 @@ class OpenAIProvider(IAIProvider):
         """
         return self.thread_repository.get_thread_id(user_id)
     
-    def generate_response(self, message_body: str, user_id: str, user_name: str) -> str:
+    def generate_response(
+        self,
+        message_body: str,
+        user_id: str,
+        user_name: str,
+        function_handler: Optional[Any] = None
+    ) -> str:
         """
         Generate AI response to user message.
         
@@ -129,8 +142,8 @@ class OpenAIProvider(IAIProvider):
                 else:
                     raise
         
-        # Run assistant and get response
-        response = self._run_assistant_optimized(thread_id)
+        # Run assistant and get response (with function call support)
+        response = self._run_assistant_optimized(thread_id, user_id=user_id)
         return response
     
     def _has_recent_messages(self, thread_id: str, hours: int = 1) -> bool:
@@ -152,8 +165,8 @@ class OpenAIProvider(IAIProvider):
             # Get recent messages (limit to last 10 for efficiency)
             messages = self.client.beta.threads.messages.list(
                 thread_id=thread_id,
-                limit=10,
-                order="desc"
+                limit=2,
+                order="desc",
             )
             
             if not messages.data:
@@ -206,8 +219,17 @@ class OpenAIProvider(IAIProvider):
         except Exception:
             pass
     
-    def _run_assistant_optimized(self, thread_id: str) -> str:
-        """Run the assistant with optimized polling strategy."""
+    def _run_assistant_optimized(self, thread_id: str, user_id: str) -> str:
+        """
+        Run the assistant with optimized polling strategy and function call support.
+        
+        Args:
+            thread_id: OpenAI thread ID
+            user_id: User ID for function call context
+            
+        Returns:
+            Final response text from assistant
+        """
         assistant = self._get_assistant()
         
         # Create run
@@ -216,7 +238,7 @@ class OpenAIProvider(IAIProvider):
             assistant_id=assistant.id
         )
         
-        # Poll for completion
+        # Poll for completion (with function call handling)
         max_attempts = 120
         attempt = 0
         start_time = time.time()
@@ -239,6 +261,13 @@ class OpenAIProvider(IAIProvider):
                 thread_id=thread_id,
                 run_id=run.id
             )
+            
+            # Handle function calls
+            if run.status == "requires_action":
+                self._handle_function_calls(run, thread_id, user_id)
+                # Continue polling after submitting function results
+                continue
+            
             attempt += 1
         
         # Handle terminal states
@@ -263,4 +292,100 @@ class OpenAIProvider(IAIProvider):
             raise ValueError("No messages returned from assistant")
         
         return messages.data[0].content[0].text.value
+    
+    def _handle_function_calls(self, run, thread_id: str, user_id: str) -> None:
+        """
+        Handle function calls from the assistant.
+        
+        Args:
+            run: OpenAI run object with requires_action status
+            thread_id: OpenAI thread ID
+            user_id: User ID for function call context
+        """
+        if not self.vertical_manager:
+            self._logger.error("Function call received but no vertical manager configured")
+            # Submit empty tool outputs to continue
+            self.client.beta.threads.runs.submit_tool_outputs(
+                thread_id=thread_id,
+                run_id=run.id,
+                tool_outputs=[]
+            )
+            return
+        
+        required_actions = run.required_action
+        if not required_actions or not required_actions.submit_tool_outputs:
+            self._logger.warning("No tool outputs required")
+            return
+        
+        tool_calls = required_actions.submit_tool_outputs.tool_calls
+        if not tool_calls:
+            self._logger.warning("No tool calls in required action")
+            return
+        
+        tool_outputs = []
+        
+        for tool_call in tool_calls:
+            function_name = tool_call.function.name
+            function_args = tool_call.function.arguments
+            
+            self._logger.info(f"Handling function call: {function_name} with args: {function_args}")
+            
+            # Get handler for this function
+            handler = self.vertical_manager.get_handler(function_name)
+            
+            if not handler:
+                self._logger.error(f"No handler found for function: {function_name}")
+                tool_outputs.append({
+                    "tool_call_id": tool_call.id,
+                    "output": f'{{"success": false, "error": "Function {function_name} not supported"}}'
+                })
+                continue
+            
+            # Parse function arguments
+            import json
+            try:
+                if isinstance(function_args, str):
+                    parameters = json.loads(function_args)
+                else:
+                    parameters = function_args
+            except json.JSONDecodeError as e:
+                self._logger.error(f"Failed to parse function arguments: {e}")
+                tool_outputs.append({
+                    "tool_call_id": tool_call.id,
+                    "output": f'{{"success": false, "error": "Invalid function arguments: {str(e)}"}}'
+                })
+                continue
+            
+            # Execute handler
+            try:
+                result = handler.handle(parameters, user_id=user_id)
+                
+                # Convert result to JSON string
+                result_json = json.dumps(result)
+                
+                tool_outputs.append({
+                    "tool_call_id": tool_call.id,
+                    "output": result_json
+                })
+                
+                self._logger.info(f"Function {function_name} executed successfully")
+                
+            except Exception as e:
+                self._logger.error(f"Error executing function {function_name}: {e}", exc_info=True)
+                tool_outputs.append({
+                    "tool_call_id": tool_call.id,
+                    "output": json.dumps({
+                        "success": False,
+                        "error": f"Function execution failed: {str(e)}"
+                    })
+                })
+        
+        # Submit tool outputs
+        self.client.beta.threads.runs.submit_tool_outputs(
+            thread_id=thread_id,
+            run_id=run.id,
+            tool_outputs=tool_outputs
+        )
+        
+        self._logger.info(f"Submitted {len(tool_outputs)} tool outputs")
 

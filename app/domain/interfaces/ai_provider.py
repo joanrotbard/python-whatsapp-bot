@@ -8,7 +8,7 @@ This allows switching between different AI services:
 - etc.
 """
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 class IAIProvider(ABC):
@@ -19,7 +19,13 @@ class IAIProvider(ABC):
     """
     
     @abstractmethod
-    def generate_response(self, message_body: str, user_id: str, user_name: str) -> str:
+    def generate_response(
+        self,
+        message_body: str,
+        user_id: str,
+        user_name: str,
+        function_handler: Optional[Any] = None
+    ) -> str:
         """
         Generate AI response to user message.
         
@@ -27,6 +33,7 @@ class IAIProvider(ABC):
             message_body: User's message text
             user_id: Unique user identifier
             user_name: User's display name
+            function_handler: Optional handler for function calls
             
         Returns:
             Generated response text

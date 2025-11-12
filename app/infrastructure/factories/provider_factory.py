@@ -5,6 +5,7 @@ from typing import Optional
 from app.domain.interfaces.message_provider import IMessageProvider
 from app.domain.interfaces.ai_provider import IAIProvider
 from app.domain.interfaces.thread_repository import IThreadRepository
+from app.domain.interfaces.vertical_manager import IVerticalManager
 
 from app.infrastructure.providers.whatsapp_provider import WhatsAppProvider
 from app.infrastructure.providers.openai_provider import OpenAIProvider
@@ -49,13 +50,18 @@ class ProviderFactory:
             raise ValueError(f"Unsupported message provider type: {provider_type}")
     
     @staticmethod
-    def create_ai_provider(provider_type: str = "openai", thread_repository: Optional[IThreadRepository] = None) -> IAIProvider:
+    def create_ai_provider(
+        provider_type: str = "openai",
+        thread_repository: Optional[IThreadRepository] = None,
+        vertical_manager: Optional[IVerticalManager] = None
+    ) -> IAIProvider:
         """
         Create an AI provider instance.
         
         Args:
             provider_type: Type of provider ("openai", "anthropic", etc.)
             thread_repository: Optional thread repository (will create if not provided)
+            vertical_manager: Optional vertical manager for function calls
             
         Returns:
             IAIProvider instance
@@ -71,12 +77,15 @@ class ProviderFactory:
             thread_repository = RedisThreadRepository(redis_client=redis_client)
         
         if provider_type == "openai":
-            return OpenAIProvider(thread_repository=thread_repository)
+            return OpenAIProvider(
+                thread_repository=thread_repository,
+                vertical_manager=vertical_manager
+            )
         # Future: Add more providers
         # elif provider_type == "anthropic":
-        #     return AnthropicProvider(thread_repository=thread_repository)
+        #     return AnthropicProvider(thread_repository=thread_repository, vertical_manager=vertical_manager)
         # elif provider_type == "gemini":
-        #     return GeminiProvider(thread_repository=thread_repository)
+        #     return GeminiProvider(thread_repository=thread_repository, vertical_manager=vertical_manager)
         else:
             raise ValueError(f"Unsupported AI provider type: {provider_type}")
     
