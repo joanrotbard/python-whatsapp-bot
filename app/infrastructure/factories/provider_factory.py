@@ -10,6 +10,7 @@ from app.domain.interfaces.vertical_manager import IVerticalManager
 
 from app.infrastructure.providers.whatsapp_provider import WhatsAppProvider
 from app.infrastructure.providers.openai_provider import OpenAIProvider
+from app.infrastructure.providers.langchain_provider import LangChainProvider
 from app.infrastructure.repositories.thread_repository import RedisThreadRepository
 from app.infrastructure.repositories.conversation_repository import RedisConversationRepository
 from app.infrastructure.redis_client import RedisClientFactory
@@ -53,7 +54,7 @@ class ProviderFactory:
     
     @staticmethod
     def create_ai_provider(
-        provider_type: str = "openai",
+        provider_type: str = "langchain",
         conversation_repository: Optional[IConversationRepository] = None,
         vertical_manager: Optional[IVerticalManager] = None,
         thread_repository: Optional[IThreadRepository] = None  # Deprecated, kept for backward compatibility
@@ -75,21 +76,32 @@ class ProviderFactory:
         """
         provider_type = provider_type.lower()
         
-        # Create conversation repository if not provided
-        if conversation_repository is None:
-            redis_client = RedisClientFactory.get_client()
-            conversation_repository = RedisConversationRepository(redis_client=redis_client)
-        
-        if provider_type == "openai":
+        if provider_type == "langchain":
+            # LangChain provider uses built-in memory, no conversation repository needed
+            if LangChainProvider is None:
+                raise ImportError(
+                    "LangChain dependencies are not installed. "
+                    "Please install them with: pip install langchain langchain-openai langchain-core pydantic"
+                )
+            return LangChainProvider(
+                vertical_manager=vertical_manager
+            )
+        elif provider_type == "openai":
+            # Legacy OpenAI provider (still supported but deprecated)
+            # Create conversation repository if not provided
+            if conversation_repository is None:
+                redis_client = RedisClientFactory.get_client()
+                conversation_repository = RedisConversationRepository(redis_client=redis_client)
+            
             return OpenAIProvider(
                 conversation_repository=conversation_repository,
                 vertical_manager=vertical_manager
             )
         # Future: Add more providers
         # elif provider_type == "anthropic":
-        #     return AnthropicProvider(conversation_repository=conversation_repository, vertical_manager=vertical_manager)
+        #     return AnthropicProvider(vertical_manager=vertical_manager)
         # elif provider_type == "gemini":
-        #     return GeminiProvider(conversation_repository=conversation_repository, vertical_manager=vertical_manager)
+        #     return GeminiProvider(vertical_manager=vertical_manager)
         else:
             raise ValueError(f"Unsupported AI provider type: {provider_type}")
     

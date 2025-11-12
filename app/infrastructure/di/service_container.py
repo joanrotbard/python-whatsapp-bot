@@ -100,25 +100,64 @@ class ServiceContainer:
             self._logger.error(f"Failed to initialize verticals: {e}")
             raise
     
-    def get_conversation_repository(self) -> IConversationRepository:
-        """Get or create conversation repository instance."""
+    def get_conversation_repository(self) -> Optional[IConversationRepository]:
+        """
+        Get or create conversation repository instance.
+        
+        ⚠️ IMPORTANT: Only needed for legacy OpenAI provider.
+        LangChain provider uses built-in memory and DOES NOT use this.
+        
+        This method is kept for backward compatibility with OpenAI provider only.
+        With LangChain, this returns None and Redis is NOT used.
+        """
+        provider_type = os.getenv("AI_PROVIDER", "langchain")
+        
+        # If using LangChain, don't create Redis repository at all
+        if provider_type.lower() == "langchain":
+            if self._conversation_repository is None:
+                self._logger.debug(
+                    "LangChain provider detected - ConversationRepository NOT created "
+                    "(LangChain uses built-in memory, NO Redis needed)"
+                )
+            return None  # LangChain doesn't use Redis
+        
+        # Only create for legacy OpenAI provider
         if self._conversation_repository is None:
             storage_type = os.getenv("THREAD_STORAGE_TYPE", "redis")
             try:
                 self._conversation_repository = ProviderFactory.create_conversation_repository(storage_type)
-                self._logger.info(f"ConversationRepository created with {storage_type}")
+                self._logger.info(
+                    f"ConversationRepository created with {storage_type} "
+                    f"(ONLY for legacy OpenAI provider)"
+                )
             except Exception as e:
                 self._logger.error(f"Failed to create ConversationRepository: {e}")
                 raise
         return self._conversation_repository
     
     def get_ai_provider(self) -> IAIProvider:
-        """Get or create AI provider instance."""
+        """
+        Get or create AI provider instance.
+        
+        With LangChain (default): Uses built-in memory, NO Redis needed.
+        With OpenAI (legacy): Uses Redis ConversationRepository.
+        """
         if self._ai_provider is None:
-            provider_type = os.getenv("AI_PROVIDER", "openai")
-            conversation_repository = self.get_conversation_repository()
+            provider_type = os.getenv("AI_PROVIDER", "langchain")  # Default to LangChain
             vertical_manager = self.get_vertical_manager()
             try:
+                # LangChain doesn't need conversation_repository (uses built-in memory)
+                # Only create and pass it for legacy OpenAI provider
+                conversation_repository = None
+                if provider_type.lower() == "openai":
+                    self._logger.info("Using legacy OpenAI provider - will create Redis ConversationRepository")
+                    conversation_repository = self.get_conversation_repository()
+                else:
+                    self._logger.info(
+                        f"Using {provider_type} provider - NO Redis ConversationRepository needed "
+                        "(uses built-in memory)"
+                    )
+                
                 self._ai_provider = ProviderFactory.create_ai_provider(
                     provider_type=provider_type,
                     conversation_repository=conversation_repository,

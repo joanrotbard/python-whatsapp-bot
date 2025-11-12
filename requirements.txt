@@ -1,5 +1,13 @@
 flask
+flask-limiter
 python-dotenv
 openai
 aiohttp
 requests
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-core>=0.1.0
+langchain-community>=0.3.0
+pydantic>=2.0.0
+redis
+celery
