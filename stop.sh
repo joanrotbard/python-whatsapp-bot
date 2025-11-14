@@ -13,6 +13,9 @@ if [ -f celery.pid ]; then
     echo "✓ Celery worker detenido"
 fi
 
+# Also kill any remaining celery processes
+pkill -f "celery.*worker" 2>/dev/null || true
+
 # Detener procesos de gunicorn
 echo "Deteniendo Flask application..."
 pkill -f "gunicorn.*app:create_app" || true

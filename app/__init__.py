@@ -118,6 +118,54 @@ def create_app(config_class=None) -> Flask:
     return app
 
 
+def _initialize_authentication(app: Flask) -> None:
+    """
+    Initialize Starlings API authentication on app startup.
+    
+    Only runs in the main process, not in Flask's reloader process.
+    
+    Args:
+        app: Flask application instance
+    """
+    import os
+    
+    _logger = logging.getLogger(__name__)
+    
+    # Skip authentication in Flask's reloader process
+    # WERKZEUG_RUN_MAIN is set by Flask when running in the main process (not reloader)
+    if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+        _logger.debug("Skipping authentication in reloader process")
+        return
+    
+    # Check if Starlings API credentials are configured
+    if not Config.STARLINGS_API_KEY:
+        _logger.warning("STARLINGS_API_KEY not configured - skipping authentication")
+        return
+    
+    if not Config.STARLINGS_PHONE_NUMBER:
+        _logger.warning("STARLINGS_PHONE_NUMBER not configured - skipping authentication")
+        return
+    
+    try:
+        from app.application.services.authentication_service import AuthenticationService
+        
+        _logger.info("Initializing Starlings API authentication...")
+        auth_service = AuthenticationService()
+        session_data = auth_service.authenticate()
+        
+        # Store auth service in app config for access in views/tasks
+        app.config['auth_service'] = auth_service
+        
+        _logger.info("Starlings API authentication successful")
+        _logger.info(f"Authenticated user: {session_data.get('user', {}).get('email', 'Unknown')}")
+        _logger.info(f"Organization: {session_data.get('organization', {}).get('name', 'Unknown')}")
+        
+    except Exception as e:
+        _logger.error(f"Failed to initialize Starlings API authentication: {e}", exc_info=True)
+        _logger.warning("App will continue without authentication - API calls may fail")
+        # Don't raise - allow app to continue (authentication can be retried later)
+
+
 def _configure_logging() -> None:
     """Configure application logging."""
     import sys
@@ -188,3 +236,6 @@ def _initialize_services(app: Flask) -> None:
     # Pre-initialize services (optional, for eager loading)
     # This can be done lazily instead
     logging.debug("Services will be initialized on demand via ServiceContainer")
+    
+    # Initialize Starlings API authentication
+    _initialize_authentication(app)

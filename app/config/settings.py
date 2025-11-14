@@ -44,6 +44,11 @@ class Config:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
     
+    # Starlings API Configuration
+    STARLINGS_API_KEY: Optional[str] = os.getenv("STARLINGS_API_KEY")
+    STARLINGS_API_BASE_URL: str = os.getenv("STARLINGS_API_BASE_URL", "https://testapi.starlings.travel")
+    STARLINGS_PHONE_NUMBER: Optional[str] = os.getenv("STARLINGS_PHONE_NUMBER")
+    
     @classmethod
     def validate(cls) -> None:
         """Validate required configuration values."""

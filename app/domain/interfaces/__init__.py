@@ -7,6 +7,7 @@ from app.domain.interfaces.conversation_repository import IConversationRepositor
 from app.domain.interfaces.function_handler import IFunctionHandler
 from app.domain.interfaces.travel_api_client import ITravelAPIClient
 from app.domain.interfaces.vertical_manager import IVerticalManager
+from app.domain.interfaces.session_storage import ISessionStorage
 
 __all__ = [
     "IMessageProvider",
@@ -16,5 +17,6 @@ __all__ = [
     "IFunctionHandler",
     "ITravelAPIClient",
     "IVerticalManager",
+    "ISessionStorage",
 ]
 

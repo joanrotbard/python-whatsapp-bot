@@ -61,8 +61,10 @@ echo -e "${GREEN}✓ Variables de entorno configuradas${NC}"
 
 # Iniciar Celery worker en background
 echo -e "${YELLOW}Iniciando Celery worker...${NC}"
-celery -A app.infrastructure.celery_app:celery_app worker --loglevel=info --detach --logfile=celery.log --pidfile=celery.pid
-echo -e "${GREEN}✓ Celery worker iniciado (PID: $(cat celery.pid))${NC}"
+# Use unique node name to avoid DuplicateNodenameWarning
+NODE_NAME="worker@$(hostname)-$(date +%s)"
+celery -A app.infrastructure.celery_app:celery_app worker --loglevel=info --detach --logfile=celery.log --pidfile=celery.pid -n "$NODE_NAME"
+echo -e "${GREEN}✓ Celery worker iniciado (PID: $(cat celery.pid), Node: $NODE_NAME)${NC}"
 
 # Iniciar Flask app
 echo -e "${YELLOW}Iniciando Flask application...${NC}"
